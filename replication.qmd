@@ -1,0 +1,142 @@
+---
+title: "Preferencias de hábitat de las lagartijas"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(detectseparation) # datos lizards
+```
+
+## Descripción del conjunto de datos
+
+Se recopilaron datos sobre los hábitos diurnos de dos especies de lagartijas: *grahami* y *opalinus*. Las observaciones se realizaron registrando las características del sitio ocupado o percha. Para cada observación se anotaron:
+
+- **Especie** observada (*grahami* u *opalinus*)
+- **Momento del día**: temprano, medio día o tarde
+- **Altura** de la percha
+- **Diámetro** de la percha
+- **Condición de luz** del sitio: soleado o sombreado
+
+```{r}
+data("lizards")
+lizards
+```
+
+Se desea comparar dos especies de lagartijas (*grahami* y *opalinus*) con respecto a sus preferencias por sitios de percha. Se asume que:
+
+- La probabilidad de detectar un sitio ocupado es la misma para ambas especies.
+- El objetivo es comparar a las dos especies de lagartijas (*grahami* y *opalinus*) en cuanto a su ocupación de diferentes tipos de perchas, caracterizadas por altura, diámetro, luz (sol/sombra) y momento del día.
+
+- Para cada combinación de estas variables, se fija el número total de sitios ocupados observados (`m_{ijkl}`).
+  - `i`: **Altura** de la percha  
+  - `j`: **Diámetro** de la percha  
+  - `k`: **Condición de luz** (soleado o sombreado)  
+  - `l`: **Momento del día** (temprano, medio día o tarde)
+- La variable respuesta `Y_{ijkl}` es el número (o proporción) de sitios ocupados por *grahami* entre los `m_{ijkl}` observados. Se modela como una binomial con índice `m_{ijkl}` y probabilidad `π_{ijkl}` de que un sitio ocupado lo sea por *grahami*.
+
+Por ejemplo:
+- De 22 perchas observadas **temprano en el día**, con **diámetro pequeño**, **bajas** y en **sol**, solo 2 (9%) estaban ocupadas por *opalinus* (es decir, 20 por *grahami*).
+- En condiciones similares pero observadas **más tarde en el día**, *opalinus* ocupó 4 de 8 (50%).
+
+Esto sugiere que *grahami* prefiere exponerse al sol temprano en el día, en comparación con *opalinus*.
+
+El análisis se formaliza con un modelo **binomial** para `Y_{ijkl}` con índice `m_{ijkl}` y proporción `π_{ijkl}`.
+
+```{r}
+# transformaciones logísticas
+# lizards$m <- lizards$grahami + lizards$opalinus
+# lizards$Y <- lizards$grahami
+# 
+# lizards$Z <- log((lizards$Y + 0.5) / (lizards$m - lizards$Y + 0.5))
+# 
+# lizards$var_Z <- 1 / (lizards$Y + 0.5) + 1 / (lizards$m - lizards$Y + 0.5)
+# lizards$weights <- 1 / lizards$var_Z
+```
+
+```{r}
+# conviertiendo a factores
+lizards$height   <- factor(lizards$height, levels = c("<5ft", ">=5ft"))
+lizards$diameter <- factor(lizards$diameter, levels = c("<=2in", ">2in"))
+lizards$light    <- factor(lizards$light, levels = c("sunny", "shady"))
+lizards$time     <- factor(lizards$time, levels = c("early", "midday", "late"))
+```
+
+Se ajusta un modelom lineal generalizado incluyendo los efectos principales: $H + D + S + T$. El modelo está dado por:
+
+$$p\left(\frac{\pi_{ijkl}}{1 - \pi_{ijkl}}\right) = \mu + \alpha_i + \beta_j + \gamma_k + \delta_l$$
+
+```{r}
+# matriz de éxitos y fracasos
+response <- cbind(success = lizards$grahami, failure = lizards$opalinus)
+
+# modelo MLG logístico
+fit_main <- glm(response ~ height + diameter + light + time,
+                family = binomial, data = lizards)
+
+# Summary of the model
+summary(fit_main)
+```
+
+Todos los efectos principales son estadísticamente significativos al $5\%$.
+
+Ninguna de las interacciones es significativa. Las diferencias en la devianza de cada modelo con interacción respecto al modelo de efectos principales no es significativa. Se concluye que el modelo con efectos principales ajusta bien los datos.
+
+```{r}
+# Modelos con interacciones (una por una)
+
+fit_TS <- glm(response ~ height + diameter + light + time + time:light, family = binomial, data = lizards)
+
+fit_TH <- glm(response ~ height + diameter + light + time + time:height, family = binomial, data = lizards)
+
+fit_TD <- glm(response ~ height + diameter + light + time + time:diameter, family = binomial, data = lizards)
+
+fit_SH <- glm(response ~ height + diameter + light + time + light:height, family = binomial, data = lizards)
+
+fit_SD <- glm(response ~ height + diameter + light + time + light:diameter, family = binomial, data = lizards)
+
+fit_HD <- glm(response ~ height + diameter + light + time + height:diameter, family = binomial, data = lizards)
+
+models <- list(fit_main, fit_TS, fit_TH, fit_TD, fit_SH, fit_SD, fit_HD)
+labels <- c("Main", "T.S", "T.H", "T.D", "S.H", "S.D", "H.D")
+
+# grados de libertad y devianzas
+dfs <- sapply(models, df.residual)
+deviances <- sapply(models, deviance)
+
+# diferencias en la devianza
+diffs <- c(NA, round(deviances[1] - deviances[-1], 2))
+
+# tabla
+tab47 <- data.frame(
+  Model = labels,
+  Df = dfs,
+  Deviance = round(deviances, 2),
+  `First difference` = diffs
+)
+
+print(tab47, row.names = FALSE)
+```
+
+```{r}
+# residuales de pearson estandarizados vs valores predichos
+
+resid_std <- rstandard(fit_main, type = "pearson")
+
+lizards$resid_std <- resid_std
+lizards$fitted    <- fitted(fit_main)
+
+plot(lizards$fitted, lizards$resid_std,
+     xlab = "Fitted values", ylab = "Standardized residuals",
+     main = "Residuals vs Fitted")
+abline(h = 0, col = "gray")
+```
+
+```{r}
+# Verificar sobredispersión (residuos Pearson al cuadrado)
+dispersion <- sum(residuals(fit_main, type = "pearson")^2) / df.residual(fit_main)
+dispersion
+```
+
+
