@@ -63,6 +63,60 @@ lizards$light    <- factor(lizards$light, levels = c("sunny", "shady"))
 lizards$time     <- factor(lizards$time, levels = c("early", "midday", "late"))
 ```
 
+Antes de comenzar un pequeño análisis descriptivo de los datos:
+```{r}
+library(GGally)
+library(ggplot2)
+library(dplyr)
+lizards[,c(1,2)] %>% ggpairs(
+    upper = list(continuous = wrap("cor", size = 2)),
+    diag = list(continuous = wrap("barDiag", colour = "burlywood")),
+    lower = list(continuous = wrap("points", alpha = 0.5, shape = 20, 
+                                   fill = "lightblue")),
+    axisLabels = "none") + 
+  theme(strip.text = element_text(size = 6))
+```
+Se ve claramente una alta correlación lineal, teniendo en cuenta que la correlación utilizada en este caso fue la correlación de Pearson. Ambas variables tienden a tener mas valores bajos que altos aunque no se sabe si mutuamente.
+
+```{r}
+for (i in c(1,2)) {
+  y_col_name <- names(lizards)[i]
+
+  for (j in c(3,4,5,6)) {
+    x_col_name <- names(lizards)[j]
+     p <- ggplot(lizards,
+            aes(x = !!sym(x_col_name),
+                y = !!sym(y_col_name), 
+                colour = !!sym(x_col_name))) +
+        geom_boxplot() +
+    labs(
+    title = paste("Boxplot de", y_col_name, "por", x_col_name),
+    x = x_col_name,
+    y = paste("Número de", y_col_name)
+    ) +
+    theme_minimal()
+     print(p)
+  }
+}
+```
+De los gráficos podemos notar que hay gráficos en lso que no parece haber diferencia de grupos como lo son los graficos de "grahami por height" y "opalinus por diameter", ambos muestran en ambos grupos datos atípicos y la diferencia de dispersión es poca o casi nula, respectivamente.
+
+Se observa que ambas especies presentan diferencia de grupos por "luz" donde se ve más dispersión una mediana más alta en "sombra" que en "soleado", aunque para "grahami se presenta un dato atípico en "soleado" a diferencia de opalinus que es más consistente en soleado. Por otro lado "opalinus" prenta un dato atípico en "sombra" a difrencia de "grahami".
+
+Por último se destaca que para ambas especies se ve el mismo orden de comportamiento de dispersión de los grupos dados por hora del día, el cual es en primer lugar con mayor dispersión "midday" le sigue "early" y por último "late". Aunque se ve más dispersión en "grahami" en "midday", no presenta datos atípicos, totalmente opuesto a "opalinos quien maneja menor dispersión sin imbargo presentó un dato atípico.
+
+En general "opalinus" tiene resultados un poco más consistentes (menor dispersión) y con valores que tienden a ser menores a comparación con "grahami".
+
+```{r}
+boxplot(lizards$grahami,
+        main="grahami",
+        ylab="Número de grahami")
+boxplot(lizards$opalinus,
+        main="opalinus",
+        ylab="Número de opalinus")
+
+```
+
 Se ajusta un modelom lineal generalizado incluyendo los efectos principales: $H + D + S + T$. El modelo está dado por:
 
 $$p\left(\frac{\pi_{ijkl}}{1 - \pi_{ijkl}}\right) = \mu + \alpha_i + \beta_j + \gamma_k + \delta_l$$
@@ -138,5 +192,13 @@ abline(h = 0, col = "gray")
 dispersion <- sum(residuals(fit_main, type = "pearson")^2) / df.residual(fit_main)
 dispersion
 ```
-
+```{r}
+qqnorm(residuals(fit_main, type = "pearson"))
+qqline(residuals(fit_main, type = "pearson"))
+```
+Se ve que los puntos tienden a estar alrededor de la recta por lo que se ve que los residuales tienen un comportamiento normal, además de esto se realizó una prueba de normalidad
+```{r}
+shapiro.test(residuals(fit_main, type = "pearson"))
+```
+El p valor de la prueba fue mayor al nivel de significancia, el cual es 0.05, por lo que no se rechaza la hipótesis de normalidad.
 
